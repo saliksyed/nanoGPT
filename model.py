@@ -108,12 +108,12 @@ class Block(nn.Module):
         return x
 
 
-NUM_FRAMES_PER_STEP = 10
+NUM_FRAMES_PER_STEP = 5
 
 @dataclass
 class GPTConfig:
-    block_size: int = 125 * NUM_FRAMES_PER_STEP # (1 + 4 + 8 + 16 + 32 + 64) * N_FRAMES
-    vocab_size: int = 65280 + 64 # 16 * 16 * 255 per patch + patch id tokens (64)
+    block_size: int = 341 * NUM_FRAMES_PER_STEP # (1 + 4 + 16 + 64 + 256) * N_FRAMES
+    input_dim: int = 16 * 16 + 1 
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
@@ -124,18 +124,18 @@ class GPT(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        assert config.vocab_size is not None
+        assert config.input_dim is not None
         assert config.block_size is not None
         self.config = config
 
         self.transformer = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.vocab_size, config.n_embd),
+            wte = nn.Linear(config.input_dim, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
             drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
             ln_f = LayerNorm(config.n_embd, bias=config.bias),
         ))
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.lm_head = nn.Linear(config.n_embd, config.input_dim, bias=False)
         # with weight tying when using torch.compile() some warnings get generated:
         # "UserWarning: functional_call was passed multiple values for tied weights.
         # This behavior is deprecated and will be an error in future versions"

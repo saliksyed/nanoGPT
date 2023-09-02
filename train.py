@@ -47,8 +47,8 @@ wandb_log = False # disabled by default
 wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
 
-NUM_FRAMES_PER_STEP = 10
-block_size = 125 * NUM_FRAMES_PER_STEP # (1 + 4 + 8 + 16 + 32 + 64) * N_FRAMES
+NUM_FRAMES_PER_STEP = 5
+block_size = 341 * NUM_FRAMES_PER_STEP # (1 + 4 + 16 + 64 + 256) * N_FRAMES
 batch_size = 64
 gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
 
@@ -114,7 +114,7 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 pl = pyvista.Plotter(off_screen=True, window_size=[256, 256])
 pl.set_background("red")
 def get_batch(split):
-    N = random.randint(3, 8) # pick number of sides on polygon
+    N = random.randint(3, 4) # pick number of sides on polygon
     x, y = render_polygon(pl, N, NUM_FRAMES_PER_STEP)
     x = torch.stack([torch.from_numpy(example).astype(np.int64) for example in x])
     y = torch.stack([torch.from_numpy(answer).astype(np.int64) for answer in y])
@@ -125,7 +125,6 @@ def get_batch(split):
         x, y = x.to(device), y.to(device)
     return x, y
 
-
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
 best_val_loss = 1e9
@@ -135,7 +134,6 @@ model_args = dict(bias=bias, dropout=dropout) # start with model_args from comma
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
-    # determine the vocab size we'll use for from-scratch training
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
 elif init_from == 'resume':
@@ -146,7 +144,7 @@ elif init_from == 'resume':
     checkpoint_model_args = checkpoint['model_args']
     # force these config attributes to be equal otherwise we can't even resume training
     # the rest of the attributes (e.g. dropout) can stay as desired from command line
-    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
+    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'input_dim']:
         model_args[k] = checkpoint_model_args[k]
     # create the model
     gptconf = GPTConfig(**model_args)
@@ -161,14 +159,6 @@ elif init_from == 'resume':
     model.load_state_dict(state_dict)
     iter_num = checkpoint['iter_num']
     best_val_loss = checkpoint['best_val_loss']
-elif init_from.startswith('gpt2'):
-    print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
-    # initialize from OpenAI GPT-2 weights
-    override_args = dict(dropout=dropout)
-    model = GPT.from_pretrained(init_from, override_args)
-    # read off the created config params, so we can store them into checkpoint correctly
-    for k in ['n_layer', 'n_head', 'n_embd', 'block_size', 'bias', 'vocab_size']:
-        model_args[k] = getattr(model.config, k)
 # crop down the model block size if desired, using model surgery
 if block_size < model.config.block_size:
     model.crop_block_size(block_size)
