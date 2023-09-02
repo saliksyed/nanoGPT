@@ -2,10 +2,14 @@ import pyvista
 import numpy as np
 import random
 from skimage.transform import resize
+from matplotlib import pyplot as plt
 
 def patch_to_vector(patch, patch_id=0):
     vec = np.sum(patch, axis = 2) / np.array(255.0*3).ravel()
     return np.append(vec, patch_id)
+
+def vector_to_patch(patch):
+    return patch[0: 256].reshape((16, 16, 1))
 
 def generate_tokens_from_frame(image):
     tokens = []
@@ -39,10 +43,13 @@ def generate_tokens_from_frame(image):
     return tokens
 
 def generate_frame_from_tokens(tokens):
-    return None
-
-def get_patch_from_frame(image, x, y):
-    return None
+    patch_id = 0
+    img = np.zeros((256, 256, 1))
+    for x in range(0, 16):
+        for y in range(0, 16):
+            img[x * 16 : (x+1)*16, y*16 : (y+1)*16] = vector_to_patch(tokens[patch_id])
+            patch_id +=1
+    return img
 
 def render_polygon(pl, N, num_frames):
     # pl = plotter
@@ -78,21 +85,43 @@ def render_polygon(pl, N, num_frames):
         pl.camera.roll += dr
         pl.camera.elevation += de
         last_img = np.array(pl.screenshot(return_img=True))
-    # each image frame generates 64 examples (one to predict each patch)
+    # each image frame generates 256 examples (one to predict each patch)
     patch_id = 0
-    for x in range(0, 8):
-        for y in range(0, 8):
+    for x in range(0, 16):
+        for y in range(0, 16):
             answer = patch_to_vector(last_img[x*16: (x+1) * 16, y*16: (y+1)*16])
             example = feature + [patch_to_vector(np.zeros((16, 16, 3)), patch_id)]
             data_points.append(np.array(example))
             answers.append(answer)
             patch_id += 1
     pl.remove_actor(actor)
-    return data_points, answers
+    return last_img, data_points, answers
   
 if __name__ == '__main__':
     pl = pyvista.Plotter(off_screen=True, window_size=[256, 256])
     pl.set_background("red")
-    x, y = render_polygon(pl, 3, 1)
-    print(x[0].shape)
-    print(y[0].shape)
+    orig_img, x, y = render_polygon(pl, 3, 1)
+    recon_img = generate_frame_from_tokens(y)
+    
+    image_list = [vector_to_patch(v) for v in x[0]]
+    f, axarr = plt.subplots(4,4)
+    axarr[0,0].imshow(image_list[5])
+    axarr[0,1].imshow(image_list[6])
+    axarr[0,2].imshow(image_list[7])
+    axarr[0,3].imshow(image_list[8])
+
+    axarr[1,0].imshow(image_list[9])
+    axarr[1,1].imshow(image_list[10])
+    axarr[1,2].imshow(image_list[11])
+    axarr[1,3].imshow(image_list[12])
+
+    axarr[2,0].imshow(image_list[13])
+    axarr[2,1].imshow(image_list[14])
+    axarr[2,2].imshow(image_list[15])
+    axarr[2,3].imshow(image_list[16])
+
+    axarr[3,0].imshow(image_list[17])
+    axarr[3,1].imshow(image_list[18])
+    axarr[3,2].imshow(image_list[19])
+    axarr[3,3].imshow(image_list[20])
+    plt.show()

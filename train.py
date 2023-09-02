@@ -49,7 +49,7 @@ wandb_run_name = 'gpt2' # 'run' + str(time.time())
 
 NUM_FRAMES_PER_STEP = 5
 block_size = 341 * NUM_FRAMES_PER_STEP # (1 + 4 + 16 + 64 + 256) * N_FRAMES
-batch_size = 64
+batch_size = 256
 gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
 
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
