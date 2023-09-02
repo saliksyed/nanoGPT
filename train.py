@@ -17,9 +17,10 @@ $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123
 """
 
 import os
+import pyvista
 import time
 import math
-import pickle
+import random
 from contextlib import nullcontext
 
 import numpy as np
@@ -29,7 +30,7 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
-from .frame import generate_tokens_from_frame, generate_frame_from_tokens 
+from .frame import render_polygon, generate_tokens_from_frame, generate_frame_from_tokens 
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -48,7 +49,7 @@ wandb_run_name = 'gpt2' # 'run' + str(time.time())
 
 NUM_FRAMES_PER_STEP = 10
 block_size = 125 * NUM_FRAMES_PER_STEP # (1 + 4 + 8 + 16 + 32 + 64) * N_FRAMES
-batch_size = 12
+batch_size = 64
 gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
 
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
@@ -110,23 +111,20 @@ device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.aut
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
-
-""""
-TODO : The bulk of the work will go here, where we generate a 3D object, perturb it and split it/tokenize it into examples.
-"""
-
+pl = pyvista.Plotter(off_screen=True, window_size=[256, 256])
+pl.set_background("red")
 def get_batch(split):
-    # data = train_data if split == 'train' else val_data
-    # ix = torch.randint(len(data) - block_size, (batch_size,))
-    # x = torch.stack([torch.from_numpy((data[i:i+block_size]).astype(np.int64)) for i in ix])
-    # y = torch.stack([torch.from_numpy((data[i+1:i+1+block_size]).astype(np.int64)) for i in ix])
-    # if device_type == 'cuda':
-    #     # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
-    #     x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
-    # else:
-    #     x, y = x.to(device), y.to(device)
-    # return x, y
-    return None
+    N = random.randint(3, 8) # pick number of sides on polygon
+    x, y = render_polygon(pl, N, NUM_FRAMES_PER_STEP)
+    x = torch.stack([torch.from_numpy(example).astype(np.int64) for example in x])
+    y = torch.stack([torch.from_numpy(answer).astype(np.int64) for answer in y])
+    if device_type == 'cuda':
+        # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
+        x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
+    else:
+        x, y = x.to(device), y.to(device)
+    return x, y
+
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
 iter_num = 0
