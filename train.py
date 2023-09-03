@@ -30,7 +30,7 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
-from .frame import render_polygon, generate_tokens_from_frame, generate_frame_from_tokens 
+from frame import render_polygon, NUM_FRAMES_PER_STEP
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -46,9 +46,7 @@ init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 wandb_log = False # disabled by default
 wandb_project = 'owt'
 wandb_run_name = 'gpt2' # 'run' + str(time.time())
-
-NUM_FRAMES_PER_STEP = 5
-block_size = 341 * NUM_FRAMES_PER_STEP # (1 + 4 + 16 + 64 + 256) * N_FRAMES
+block_size = 341 * NUM_FRAMES_PER_STEP + 1 # (1 + 4 + 16 + 64 + 256) * N_FRAMES + prediction token
 batch_size = 256
 gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
 
@@ -115,9 +113,9 @@ pl = pyvista.Plotter(off_screen=True, window_size=[256, 256])
 pl.set_background("red")
 def get_batch(split):
     N = random.randint(3, 4) # pick number of sides on polygon
-    x, y = render_polygon(pl, N, NUM_FRAMES_PER_STEP)
-    x = torch.stack([torch.from_numpy(example).astype(np.int64) for example in x])
-    y = torch.stack([torch.from_numpy(answer).astype(np.int64) for answer in y])
+    img, x, y = render_polygon(pl, N, NUM_FRAMES_PER_STEP)
+    x = torch.stack([torch.from_numpy(example).type(torch.FloatTensor) for example in x])
+    y = torch.stack([torch.from_numpy(answer).type(torch.FloatTensor) for answer in y])
     if device_type == 'cuda':
         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
@@ -159,10 +157,6 @@ elif init_from == 'resume':
     model.load_state_dict(state_dict)
     iter_num = checkpoint['iter_num']
     best_val_loss = checkpoint['best_val_loss']
-# crop down the model block size if desired, using model surgery
-if block_size < model.config.block_size:
-    model.crop_block_size(block_size)
-    model_args['block_size'] = block_size # so that the checkpoint will have the right value
 model.to(device)
 
 # initialize a GradScaler. If enabled=False scaler is a no-op

@@ -11,12 +11,12 @@ import math
 import inspect
 from dataclasses import dataclass
 
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from .frame import generate_tokens_from_frame, generate_frame_from_tokens 
-
+from frame import generate_tokens_from_frame, generate_frame_from_tokens, patch_to_vector, NUM_FRAMES_PER_STEP
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
 
@@ -107,13 +107,10 @@ class Block(nn.Module):
         x = x + self.mlp(self.ln_2(x))
         return x
 
-
-NUM_FRAMES_PER_STEP = 5
-
 @dataclass
 class GPTConfig:
-    block_size: int = 341 * NUM_FRAMES_PER_STEP # (1 + 4 + 16 + 64 + 256) * N_FRAMES
-    input_dim: int = 16 * 16 + 1 
+    block_size: int = 341 * NUM_FRAMES_PER_STEP + 1 # (1 + 4 + 16 + 64 + 256) * N_FRAMES + 1 prediction token
+    input_dim: int = 16 * 16 + 1
     n_layer: int = 12
     n_head: int = 12
     n_embd: int = 768
@@ -128,8 +125,9 @@ class GPT(nn.Module):
         assert config.block_size is not None
         self.config = config
 
+        self.reduction = nn.Linear(config.input_dim, config.n_embd, bias=False)
+
         self.transformer = nn.ModuleDict(dict(
-            wte = nn.Linear(config.input_dim, config.n_embd),
             wpe = nn.Embedding(config.block_size, config.n_embd),
             drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
@@ -140,7 +138,7 @@ class GPT(nn.Module):
         # "UserWarning: functional_call was passed multiple values for tied weights.
         # This behavior is deprecated and will be an error in future versions"
         # not 100% sure what this is, so far seems to be harmless. TODO investigate
-        self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
+        #self.reduction.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
 
         # init all weights
         self.apply(self._init_weights)
@@ -174,39 +172,27 @@ class GPT(nn.Module):
 
     def forward(self, idx, targets=None):
         device = idx.device
-        b, t = idx.size()
+        b, t, d = idx.size()
         assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
         pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
 
         # forward the GPT model itself
-        tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
+        tok_emb = self.reduction(idx) # map input to shape (b, t, n_embd)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
         x = self.transformer.drop(tok_emb + pos_emb)
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
-
         if targets is not None:
             # if we are given some desired targets also calculate the loss
-            logits = self.lm_head(x)
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
+            prediction = self.lm_head(x)
+            error = F.mse_loss(prediction[:, -1, :], targets)
         else:
             # inference-time mini-optimization: only forward the lm_head on the very last position
-            logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
-            loss = None
+            prediction = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
+            error = None
 
-        return logits, loss
-
-    def crop_block_size(self, block_size):
-        # model surgery to decrease the block size if necessary
-        # e.g. we may load the GPT2 pretrained model checkpoint (block size 1024)
-        # but want to use a smaller block size for some smaller, simpler model
-        assert block_size <= self.config.block_size
-        self.config.block_size = block_size
-        self.transformer.wpe.weight = nn.Parameter(self.transformer.wpe.weight[:block_size])
-        for block in self.transformer.h:
-            if hasattr(block.attn, 'bias'):
-                block.attn.bias = block.attn.bias[:,:,:block_size,:block_size]
+        return prediction, error
 
 
     def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
@@ -236,38 +222,19 @@ class GPT(nn.Module):
         return optimizer
     
     @torch.no_grad()
-    def generate(self, start_frame, num_frames, temperature=1.0, top_k=None):
+    def generate(self, start_frame, num_frames):
         last_frame = start_frame
+        frames = []
         for _ in range(num_frames):
             patch_id = 0
             next_tokens = []
             tokens = generate_tokens_from_frame(last_frame)
             for x in range(0, 8):
                 for y in range(0, 8):
-                    tokens = []
-                    
-                    curr_tokens = tokens + [patch_id]
-                    next_token = None # TODO: run inference for patch_id
-                    next_tokens.append(next_token)
+                    curr_tokens = tokens + [patch_to_vector(np.zeros((16, 16, 3)), patch_id)]
+                    prediction, _ = self(curr_tokens)[:, -1, :]
+                    next_tokens.append(prediction)
                     patch_id +=1
-        
             last_frame = generate_frame_from_tokens(next_tokens)
-
-            # # if the sequence context is growing too long we must crop it at block_size
-            # idx_cond = idx if idx.size(1) <= self.config.block_size else idx[:, -self.config.block_size:]
-            # # forward the model to get the logits for the index in the sequence
-            # logits, _ = self(idx_cond)
-            # # pluck the logits at the final step and scale by desired temperature
-            # logits = logits[:, -1, :] / temperature
-            # # optionally crop the logits to only the top k options
-            # if top_k is not None:
-            #     v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
-            #     logits[logits < v[:, [-1]]] = -float('Inf')
-            # # apply softmax to convert logits to (normalized) probabilities
-            # probs = F.softmax(logits, dim=-1)
-            # # sample from the distribution
-            # idx_next = torch.multinomial(probs, num_samples=1)
-            # # append sampled index to the running sequence and continue
-            # idx = torch.cat((idx, idx_next), dim=1)
-
-        return idx
+            frames.append(last_frame)
+        return frames

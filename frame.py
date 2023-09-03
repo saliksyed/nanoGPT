@@ -4,6 +4,8 @@ import random
 from skimage.transform import resize
 from matplotlib import pyplot as plt
 
+NUM_FRAMES_PER_STEP = 5
+
 def patch_to_vector(patch, patch_id=0):
     vec = np.sum(patch, axis = 2) / np.array(255.0*3).ravel()
     return np.append(vec, patch_id)
@@ -95,6 +97,7 @@ def render_polygon(pl, N, num_frames):
             answers.append(answer)
             patch_id += 1
     pl.remove_actor(actor)
+    print(len(data_points[0]))
     return last_img, data_points, answers
   
 if __name__ == '__main__':
