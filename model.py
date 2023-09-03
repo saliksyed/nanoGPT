@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-from frame import generate_tokens_from_frame, generate_frame_from_tokens, patch_to_vector, NUM_FRAMES_PER_STEP
+from frame import generate_tokens_from_frame, generate_frame_from_tokens, patch_to_vector, NUM_FRAMES_PER_STEP, N_PATCHES_PER_FRAME
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
 
@@ -109,11 +109,11 @@ class Block(nn.Module):
 
 @dataclass
 class GPTConfig:
-    block_size: int = 341 * NUM_FRAMES_PER_STEP + 1 # (1 + 4 + 16 + 64 + 256) * N_FRAMES + 1 prediction token
+    block_size: int = N_PATCHES_PER_FRAME * NUM_FRAMES_PER_STEP + 1 # + 1 prediction token
     input_dim: int = 16 * 16 + 1
-    n_layer: int = 12
-    n_head: int = 12
-    n_embd: int = 768
+    n_layer: int = 8
+    n_head: int = 2
+    n_embd: int = 8
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
@@ -125,7 +125,8 @@ class GPT(nn.Module):
         assert config.block_size is not None
         self.config = config
 
-        self.reduction = nn.Linear(config.input_dim, config.n_embd, bias=False)
+        self.normalize = LayerNorm(config.input_dim, bias=False)
+        self.reduction = nn.Linear(config.input_dim, config.n_embd)
 
         self.transformer = nn.ModuleDict(dict(
             wpe = nn.Embedding(config.block_size, config.n_embd),
@@ -134,12 +135,6 @@ class GPT(nn.Module):
             ln_f = LayerNorm(config.n_embd, bias=config.bias),
         ))
         self.lm_head = nn.Linear(config.n_embd, config.input_dim, bias=False)
-        # with weight tying when using torch.compile() some warnings get generated:
-        # "UserWarning: functional_call was passed multiple values for tied weights.
-        # This behavior is deprecated and will be an error in future versions"
-        # not 100% sure what this is, so far seems to be harmless. TODO investigate
-        #self.reduction.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
-
         # init all weights
         self.apply(self._init_weights)
         # apply special scaled init to the residual projections, per GPT-2 paper
@@ -177,7 +172,7 @@ class GPT(nn.Module):
         pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
 
         # forward the GPT model itself
-        tok_emb = self.reduction(idx) # map input to shape (b, t, n_embd)
+        tok_emb = self.reduction(self.normalize(idx)) # map input to shape (b, t, n_embd)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
         x = self.transformer.drop(tok_emb + pos_emb)
         for block in self.transformer.h:
@@ -238,3 +233,19 @@ class GPT(nn.Module):
             last_frame = generate_frame_from_tokens(next_tokens)
             frames.append(last_frame)
         return frames
+
+    def estimate_mfu(self, fwdbwd_per_iter, dt):
+        """ estimate model flops utilization (MFU) in units of A100 bfloat16 peak FLOPS """
+        # first estimate the number of flops we do per iteration.
+        # see PaLM paper Appendix B as ref: https://arxiv.org/abs/2204.02311
+        N = self.get_num_params()
+        cfg = self.config
+        L, H, Q, T = cfg.n_layer, cfg.n_head, cfg.n_embd//cfg.n_head, cfg.block_size
+        flops_per_token = 6*N + 12*L*H*Q*T
+        flops_per_fwdbwd = flops_per_token * T
+        flops_per_iter = flops_per_fwdbwd * fwdbwd_per_iter
+        # express our flops throughput as ratio of A100 bfloat16 peak flops
+        flops_achieved = flops_per_iter * (1.0/dt) # per second
+        flops_promised = 312e12 # A100 GPU bfloat16 peak flops is 312 TFLOPS
+        mfu = flops_achieved / flops_promised
+        return mfu

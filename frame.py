@@ -4,7 +4,9 @@ import random
 from skimage.transform import resize
 from matplotlib import pyplot as plt
 
-NUM_FRAMES_PER_STEP = 10
+NUM_FRAMES_PER_STEP = 1
+N_PATCHES_PER_FRAME = 341  # patches at each depth: (1 + 4 + 16 + 64 + 256) 
+BATCH_SIZE = 256
 
 def patch_to_vector(patch, patch_id=0):
     vec = np.sum(patch, axis = 2) / np.array(255.0*3).ravel()
@@ -97,11 +99,11 @@ def render_polygon(pl, N, num_frames):
             answers.append(answer)
             patch_id += 1
     pl.remove_actor(actor)
-    return last_img, data_points, answers
+    return last_img, data_points[:BATCH_SIZE], answers[:BATCH_SIZE]
   
 if __name__ == '__main__':
     pl = pyvista.Plotter(off_screen=True, window_size=[256, 256])
-    pl.set_background("red")
+    pl.set_background("black")
     orig_img, x, y = render_polygon(pl, 3, 1)
     recon_img = generate_frame_from_tokens(y)
     
