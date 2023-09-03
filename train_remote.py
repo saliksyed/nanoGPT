@@ -1,17 +1,18 @@
 import modal
 import subprocess
-import os
 volume = modal.NetworkFileSystem.new()
 
+pyvista_requirements = "mesa-libGL mesa-dri-drivers xorg-x11-drv-dummy xserver-xorg-video-dummy".split()
 stub = modal.Stub(
     "nanoGPT",
     image=modal.Image.micromamba()
-    .apt_install(["git", "libgl1-mesa-dev", "xvfb", "libxrender1"])
+    .apt_install(["git"] + pyvista_requirements)
     .pip_install(["pyvista", "torch", "scikit-image"])
     .run_commands(
         [
             "git clone https://github.com/saliksyed/nanoGPT"
-        ]
+        ],
+        force_rebuild=True
     )
 )
 
