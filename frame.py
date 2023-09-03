@@ -97,7 +97,6 @@ def render_polygon(pl, N, num_frames):
             answers.append(answer)
             patch_id += 1
     pl.remove_actor(actor)
-    print(len(data_points[0]))
     return last_img, data_points, answers
   
 if __name__ == '__main__':

@@ -16,7 +16,7 @@ stub = modal.Stub(
 )
 
 @stub.function(
-    gpu="any",
+    gpu=modal.gpu.A10G(count=1),
     timeout=1800,
 )
 async def run_training():
