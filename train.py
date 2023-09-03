@@ -32,6 +32,8 @@ from model import GPTConfig, GPT
 
 from frame import render_polygon, NUM_FRAMES_PER_STEP
 
+pyvista.start_xvfb()
+
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
