@@ -11,7 +11,8 @@ stub = modal.Stub(
     .run_commands(
         [
             "git clone https://github.com/saliksyed/nanoGPT"
-        ]
+        ],
+        force_build=True
     )
 )
 
@@ -21,9 +22,8 @@ stub = modal.Stub(
 )
 async def run_training():
     subprocess.run(["chmod", "+rwx", "prep.sh"], check=True, cwd="/nanoGPT")
-    subprocess.run(["./prep.sh"], check=True, cwd="/nanoGPT")
-    run_cmd = "python train.py --device=cuda:0"
-    subprocess.run(run_cmd.split(), check=True, cwd="/nanoGPT")
+    run_cmd = "./prep.sh && python train.py --device=cuda:0"
+    subprocess.run(run_cmd.split(), check=True, shell=True, cwd="/nanoGPT")
 
 
 @stub.local_entrypoint()
