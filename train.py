@@ -117,8 +117,14 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 pl = pyvista.Plotter(off_screen=True, window_size=[256, 256])
 pl.set_background(BG_COLOR)
 def get_batch(split):
+    print("got batch")
     N = 4
-    img, x, y = render_polygon(N, NUM_FRAMES_PER_STEP)
+    x = []
+    y = []
+    for i in range(0, batch_size):
+        img, feature, answer = render_polygon(N, NUM_FRAMES_PER_STEP)
+        x.append(feature)
+        y.append(answer)
     x = torch.stack([torch.from_numpy(example).type(torch.FloatTensor) for example in x])
     y = torch.stack([torch.from_numpy(answer).type(torch.FloatTensor) for answer in y])
     if device_type == 'cuda':
