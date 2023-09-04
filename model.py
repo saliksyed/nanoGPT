@@ -112,8 +112,8 @@ class GPTConfig:
     block_size: int = N_PATCHES_PER_FRAME * NUM_FRAMES_PER_STEP + 1 # + 1 prediction token
     input_dim: int = 16 * 16 + 1
     n_layer: int = 8
-    n_head: int = 2
-    n_embd: int = 8
+    n_head: int = 8
+    n_embd: int = 256
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
@@ -217,21 +217,27 @@ class GPT(nn.Module):
         return optimizer
     
     @torch.no_grad()
-    def generate(self, start_frame, num_frames):
-        last_frame = start_frame
+    def generate(self, start_frames, num_frames=1):
         frames = []
         for _ in range(num_frames):
+            feature = []
+            for i in range(0, NUM_FRAMES_PER_STEP):
+                tokens = generate_tokens_from_frame(start_frames[i])
+                feature += tokens
             patch_id = 0
             next_tokens = []
-            tokens = generate_tokens_from_frame(last_frame)
-            for x in range(0, 8):
-                for y in range(0, 8):
+            for x in range(0, 16):
+                for y in range(0, 16):
                     curr_tokens = tokens + [patch_to_vector(np.zeros((16, 16, 3)), patch_id)]
-                    prediction, _ = self(curr_tokens)[:, -1, :]
-                    next_tokens.append(prediction)
+                    curr_vec = torch.stack([torch.from_numpy(np.array(curr_tokens)).type(torch.FloatTensor)]).to('mps')
+                    prediction, _ = self(curr_vec)
+                    vector = prediction.cpu().flatten().detach().numpy()
+                    next_tokens.append(vector)
                     patch_id +=1
             last_frame = generate_frame_from_tokens(next_tokens)
             frames.append(last_frame)
+            start_frames.pop(0)
+            start_frames.append(last_frame)
         return frames
 
     def estimate_mfu(self, fwdbwd_per_iter, dt):

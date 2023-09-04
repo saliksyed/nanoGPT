@@ -4,9 +4,13 @@ import random
 from skimage.transform import resize
 from matplotlib import pyplot as plt
 
-NUM_FRAMES_PER_STEP = 1
+NUM_FRAMES_PER_STEP = 10
 N_PATCHES_PER_FRAME = 341  # patches at each depth: (1 + 4 + 16 + 64 + 256) 
 BATCH_SIZE = 256
+BG_COLOR = "black"
+
+pl = pyvista.Plotter(off_screen=True, window_size=[256, 256])
+pl.set_background(BG_COLOR)
 
 def patch_to_vector(patch, patch_id=0):
     vec = np.sum(patch, axis = 2) / np.array(255.0*3).ravel()
@@ -55,7 +59,7 @@ def generate_frame_from_tokens(tokens):
             patch_id +=1
     return img
 
-def render_polygon(pl, N, num_frames):
+def render_polygon(N, num_frames):
     # pl = plotter
     # N = number of faces
     # num_frames = number of frames
@@ -68,27 +72,33 @@ def render_polygon(pl, N, num_frames):
     face = [N + 1] + list(range(N)) + [0]
     poly = pyvista.PolyData(points_3d, faces=face)
     mesh = poly.extrude([0, 0, 1], capping=True)
-    actor = pl.add_mesh(mesh, smooth_shading=False)
 
     # pick a random start pos
-    pl.camera.azimuth = random.random() * 180
-    pl.camera.roll = random.random() * 180
-    pl.camera.elevation = random.random() * 180
-    sz = 1.0
-    da = (random.random() - 0.5) * sz
-    dr = (random.random() - 0.5) * sz
-    de = (random.random() - 0.5) * sz
+    actor = pl.add_mesh(mesh, smooth_shading=False)
+    pl.camera.azimuth = random.random()*360
+    pl.camera.roll = random.random()*360
+    pl.camera.elevation = random.random()*360
+
+    
+    sz = 5
+    da = (1 if random.random() > 0.5 else -1) * sz
+    dr =  (1 if random.random() > 0.5 else -1) * sz
+    de =  (1 if random.random() > 0.5 else -1) * sz
     last_img = np.array(pl.screenshot(return_img=True))
     feature = []
     data_points = []
     answers = []
+    images = [last_img]
     for i in range(0, num_frames):
+        pl.remove_actor(actor)
         tokens = generate_tokens_from_frame(last_img)
         feature += tokens
         pl.camera.azimuth += da
         pl.camera.roll += dr
         pl.camera.elevation += de
+        actor = pl.add_mesh(mesh, smooth_shading=False)
         last_img = np.array(pl.screenshot(return_img=True))
+        images.append(last_img)
     # each image frame generates 256 examples (one to predict each patch)
     patch_id = 0
     for x in range(0, 16):
@@ -98,13 +108,11 @@ def render_polygon(pl, N, num_frames):
             data_points.append(np.array(example))
             answers.append(answer)
             patch_id += 1
-    pl.remove_actor(actor)
-    return last_img, data_points[:BATCH_SIZE], answers[:BATCH_SIZE]
+    
+    return images, data_points[:BATCH_SIZE], answers[:BATCH_SIZE]
   
 if __name__ == '__main__':
-    pl = pyvista.Plotter(off_screen=True, window_size=[256, 256])
-    pl.set_background("black")
-    orig_img, x, y = render_polygon(pl, 3, 1)
+    orig_img, x, y = render_polygon(3, 1)
     recon_img = generate_frame_from_tokens(y)
     
     image_list = [vector_to_patch(v) for v in x[0]]

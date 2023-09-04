@@ -32,7 +32,7 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
-from frame import render_polygon, NUM_FRAMES_PER_STEP, N_PATCHES_PER_FRAME, BATCH_SIZE
+from frame import render_polygon, NUM_FRAMES_PER_STEP, N_PATCHES_PER_FRAME, BATCH_SIZE, BG_COLOR
 
 faulthandler.enable()
 pyvista.start_xvfb()
@@ -115,10 +115,10 @@ ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torc
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
 pl = pyvista.Plotter(off_screen=True, window_size=[256, 256])
-pl.set_background("red")
+pl.set_background(BG_COLOR)
 def get_batch(split):
-    N = random.randint(3, 4) # pick number of sides on polygon
-    img, x, y = render_polygon(pl, N, NUM_FRAMES_PER_STEP)
+    N = 4
+    img, x, y = render_polygon(N, NUM_FRAMES_PER_STEP)
     x = torch.stack([torch.from_numpy(example).type(torch.FloatTensor) for example in x])
     y = torch.stack([torch.from_numpy(answer).type(torch.FloatTensor) for answer in y])
     if device_type == 'cuda':
