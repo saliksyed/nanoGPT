@@ -12,7 +12,7 @@ from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
-from frame import render_polygon, NUM_FRAMES_PER_STEP, N_PATCHES_PER_FRAME, BATCH_SIZE
+from frame import generate_frame_from_tokens, generate_tokens_from_frame, render_polygon, NUM_FRAMES_PER_STEP, N_PATCHES_PER_FRAME, BATCH_SIZE
 
 from matplotlib import pyplot as plt
 
@@ -108,9 +108,10 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 
 imgs, X, Y = render_polygon(4, NUM_FRAMES_PER_STEP)
 f, ax = plt.subplots(1,  NUM_FRAMES_PER_STEP + 2)
-for i in range(0, NUM_FRAMES_PER_STEP + 1):
-    ax[i].imshow(imgs[i])
+    
+ax[0].imshow(generate_frame_from_tokens(X))
+ax[1].imshow(generate_frame_from_tokens([Y]))
 
-predictions = model.generate(imgs[:NUM_FRAMES_PER_STEP], 1)
+predictions = model.generate([imgs[0]], 1)
 ax[NUM_FRAMES_PER_STEP + 1].imshow(predictions[0])
 plt.show()

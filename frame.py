@@ -3,12 +3,14 @@ import numpy as np
 import random
 from skimage.transform import resize
 from matplotlib import pyplot as plt
-
+import time
 NUM_FRAMES_PER_STEP = 1
 N_PATCHES_PER_FRAME = 1  # patches at each depth: (1 + 4 + 16 + 64 + 256) 
 BATCH_SIZE = 12
 BG_COLOR = "black"
 
+
+pyvista.start_xvfb()
 pl = pyvista.Plotter(off_screen=True, window_size=[16, 16])
 pl.set_background(BG_COLOR)
 
@@ -26,9 +28,7 @@ def generate_frame_from_tokens(tokens):
     return tokens[0].reshape((16, 16))
 
 def render_polygon(N, num_frames):
-    # pl = plotter
-    # N = number of faces
-    # num_frames = number of frames
+    pl.clear()
     rng = np.random.default_rng()
     angles = np.linspace(0, 2*np.pi, N, endpoint=False)
     radii = rng.uniform(0.5, 1.5, N)
@@ -66,3 +66,10 @@ def render_polygon(N, num_frames):
 
     answer = generate_tokens_from_frame(last_img)
     return images, np.array(feature), answer
+
+if __name__ == '__main__':
+    for i in range(0, 100):
+        start = time.time()
+        img, _, _ = render_polygon(5, 1)
+        end = time.time()
+        print(end - start)

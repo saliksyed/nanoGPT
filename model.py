@@ -111,7 +111,7 @@ class Block(nn.Module):
 class GPTConfig:
     block_size: int = N_PATCHES_PER_FRAME * NUM_FRAMES_PER_STEP
     input_dim: int = 16 * 16
-    n_layer: int = 1
+    n_layer: int = 8
     n_head: int = 8
     n_embd: int = 32
     dropout: float = 0.0
@@ -134,7 +134,7 @@ class GPT(nn.Module):
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
             ln_f = LayerNorm(config.n_embd, bias=config.bias),
         ))
-        self.lm_head = nn.Linear(config.n_embd, config.input_dim, bias=False)
+        self.lm_head = nn.Linear(config.n_embd, config.input_dim)
         # init all weights
         self.apply(self._init_weights)
         # apply special scaled init to the residual projections, per GPT-2 paper
@@ -172,7 +172,7 @@ class GPT(nn.Module):
         pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
 
         # forward the GPT model itself
-        tok_emb = self.reduction(self.normalize(idx)) # map input to shape (b, t, n_embd)
+        tok_emb = self.reduction(idx) # map input to shape (b, t, n_embd)
         pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
         x = self.transformer.drop(tok_emb + pos_emb)
         for block in self.transformer.h:
@@ -181,7 +181,7 @@ class GPT(nn.Module):
         if targets is not None:
             # if we are given some desired targets also calculate the loss
             prediction = self.lm_head(x)
-            error = F.mse_loss(prediction[:, -1, :], targets)
+            error = torch.sqrt(torch.sum(torch.pow(prediction[:, -1, :] - targets, 2)))
         else:
             # inference-time mini-optimization: only forward the lm_head on the very last position
             prediction = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
@@ -223,12 +223,11 @@ class GPT(nn.Module):
             feature = []
             for i in range(0, NUM_FRAMES_PER_STEP):
                 tokens = generate_tokens_from_frame(start_frames[i])
-                feature += tokens
-            curr_tokens = tokens
-            curr_vec = torch.stack([torch.from_numpy(np.array(curr_tokens)).type(torch.FloatTensor)]).to('mps')
+                feature += [tokens]
+            curr_vec = torch.stack([torch.from_numpy(np.array(feature)).type(torch.FloatTensor)]).to('mps')
             prediction, _ = self(curr_vec)
             vector = prediction.cpu().flatten().detach().numpy()
-            last_frame = generate_frame_from_tokens([next_tokens])
+            last_frame = generate_frame_from_tokens([vector])
             frames.append(last_frame)
             start_frames.pop(0)
             start_frames.append(last_frame)

@@ -35,7 +35,6 @@ from model import GPTConfig, GPT
 from frame import render_polygon, NUM_FRAMES_PER_STEP, N_PATCHES_PER_FRAME, BATCH_SIZE, BG_COLOR
 
 faulthandler.enable()
-pyvista.start_xvfb()
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
@@ -116,22 +115,47 @@ ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=
 
 pl = pyvista.Plotter(off_screen=True, window_size=[256, 256])
 pl.set_background(BG_COLOR)
-def get_batch(split):
-    print("got batch")
+
+data = None
+
+def generate_samples(num=100000):
     N = 4
+    print("Generating samples")
     x = []
     y = []
-    for i in range(0, batch_size):
+    start = time.time()
+    end = None
+    for i in range(0, num):
+        if i % 100 == 0:
+            end = time.time()
+            print(i)
+            print(end - start)
+            start = end
         img, feature, answer = render_polygon(N, NUM_FRAMES_PER_STEP)
         x.append(feature)
         y.append(answer)
-    x = torch.stack([torch.from_numpy(example).type(torch.FloatTensor) for example in x])
-    y = torch.stack([torch.from_numpy(answer).type(torch.FloatTensor) for answer in y])
+    train = (np.array(x[:math.floor(num*0.7)]), np.array(y[:math.floor(num*0.7)]))
+    test = (np.array(x[math.floor(num*0.7):]), np.array(y[math.floor(num*0.7):]))
+    
+    return train, test
+
+data = generate_samples(5000)
+def get_batch(split):
+    global data
+    start = time.time()
+    if split == 'train':
+        target_data = data[0]
+    else:
+        target_data = data[1]
+    ix = [random.randint(0, len(target_data)) for i in range(0, batch_size)]
+    x = torch.stack([torch.from_numpy(target_data[0][i]).type(torch.FloatTensor) for i in ix])
+    y = torch.stack([torch.from_numpy(target_data[1][i]).type(torch.FloatTensor) for i in ix])
     if device_type == 'cuda':
         # pin arrays x,y, which allows us to move them to GPU asynchronously (non_blocking=True)
         x, y = x.pin_memory().to(device, non_blocking=True), y.pin_memory().to(device, non_blocking=True)
     else:
         x, y = x.to(device), y.to(device)
+    end = time.time()
     return x, y
 
 # init these up here, can override if init_from='resume' (i.e. from a checkpoint)
