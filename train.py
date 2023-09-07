@@ -139,7 +139,7 @@ def generate_samples(num=100000):
     
     return train, test
 
-data = generate_samples(5000)
+data = generate_samples(50)
 def get_batch(split):
     global data
     start = time.time()

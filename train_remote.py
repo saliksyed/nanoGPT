@@ -1,7 +1,5 @@
 import modal
 import subprocess
-import os
-volume = modal.NetworkFileSystem.new()
 
 stub = modal.Stub(
     "nanoGPT",
@@ -20,6 +18,8 @@ stub = modal.Stub(
     timeout=1800,
 )
 async def run_training():
+    subprocess.run(["git", "pull"], check=True, cwd="/nanoGPT")
+    subprocess.run(["git", "checkout", "simple"], check=True, cwd="/nanoGPT")
     subprocess.run(["chmod", "+rwx", "prep.sh"], check=True, cwd="/nanoGPT")
     run_cmd = "./prep.sh && python train.py --device=cuda:0"
     subprocess.run(args=run_cmd, check=True, shell=True, cwd="/nanoGPT")

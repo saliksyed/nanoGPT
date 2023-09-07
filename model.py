@@ -113,7 +113,7 @@ class GPTConfig:
     input_dim: int = 16 * 16
     n_layer: int = 8
     n_head: int = 8
-    n_embd: int = 32
+    n_embd: int = 256
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
 
