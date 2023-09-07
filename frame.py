@@ -6,26 +6,13 @@ from matplotlib import pyplot as plt
 import time
 NUM_FRAMES_PER_STEP = 1
 N_PATCHES_PER_FRAME = 1  # patches at each depth: (1 + 4 + 16 + 64 + 256) 
-BATCH_SIZE = 12
+BATCH_SIZE = 64
 BG_COLOR = "black"
 
 
 pyvista.start_xvfb()
-pl = pyvista.Plotter(off_screen=True, window_size=[16, 16])
+pl = pyvista.Plotter(off_screen=True, window_size=[32,32])
 pl.set_background(BG_COLOR)
-
-def patch_to_vector(patch):
-    return (np.sum(patch, axis = 2) / np.array(255.0*3)).ravel()
-
-def vector_to_patch(patch):
-    return patch[0: 256].reshape((16, 16, 1))
-
-def generate_tokens_from_frame(image):
-    return patch_to_vector(resize(image, (16,16)))
-
-
-def generate_frame_from_tokens(tokens):
-    return tokens[0].reshape((16, 16))
 
 def render_polygon(N, num_frames):
     pl.clear()
@@ -44,28 +31,21 @@ def render_polygon(N, num_frames):
     pl.camera.azimuth = random.random()*360
     pl.camera.roll = random.random()*360
     pl.camera.elevation = random.random()*360
-
-    
     sz = 5
-    da = (1 if random.random() > 0.5 else -1) * sz
+    da = 0 #(1 if random.random() > 0.5 else -1) * sz
     dr =  (1 if random.random() > 0.5 else -1) * sz
-    de =  (1 if random.random() > 0.5 else -1) * sz
-    last_img = np.array(pl.screenshot(return_img=True))
-    feature = []
-    images = [last_img]
+    de =  0 #(1 if random.random() > 0.5 else -1) * sz
+    curr_img = np.array(pl.screenshot(return_img=True))
+    past_frames = [curr_img]
     for i in range(0, num_frames):
         pl.remove_actor(actor)
-        tokens = [generate_tokens_from_frame(last_img)]
-        feature += tokens
         pl.camera.azimuth += da
         pl.camera.roll += dr
         pl.camera.elevation += de
         actor = pl.add_mesh(mesh, smooth_shading=False)
-        last_img = np.array(pl.screenshot(return_img=True))
-        images.append(last_img)
-
-    answer = generate_tokens_from_frame(last_img)
-    return images, np.array(feature), answer
+        curr_img = np.array(pl.screenshot(return_img=True))
+        past_frames.append(curr_img)
+    return past_frames
 
 if __name__ == '__main__':
     for i in range(0, 100):
