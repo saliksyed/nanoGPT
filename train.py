@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import torchvision
 import torchvision.transforms as transforms
 import torchvision.datasets as Datasets
+import torchvision.transforms.functional as tv
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import matplotlib.pyplot as plt
@@ -20,18 +21,23 @@ print('Running on the mps')
 
 from frame import render_polygon
 
-N_SIDES = 3
+N_SIDES = 4
+WINDOW = 4
+NUM_TRAIN = 1000
   
 #  extracting training images
-training_images = render_polygon(N_SIDES, 1000)
+raw_images = [render_polygon(N_SIDES, WINDOW) for _ in range(0, NUM_TRAIN)]
 
-#  extracting validation images
-validation_images = render_polygon(N_SIDES, 1000)
-
-test_images = render_polygon(N_SIDES, 100)
+training_images = []
+target_images = []
+for imgs in raw_images:
+  example = np.concatenate(imgs[:-1], axis=1)
+  answer = np.concatenate(imgs[1:], axis=1)
+  training_images.append(example)
+  target_images.append(answer)
 
 #  defining dataset class
-class CustomCIFAR10(Dataset):
+class CustomDataset(Dataset):
   def __init__(self, data, transforms=None):
     self.data = data
     self.transforms = transforms
@@ -48,13 +54,11 @@ class CustomCIFAR10(Dataset):
     
     
 #  creating pytorch datasets
-training_data = CustomCIFAR10(training_images, transforms=transforms.Compose([transforms.ToTensor(),
+training_data = CustomDataset(training_images, transforms=transforms.Compose([transforms.ToTensor(),
                                                                               transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
-validation_data = CustomCIFAR10(validation_images, transforms=transforms.Compose([transforms.ToTensor(),
-                                                                                  transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
-test_data = CustomCIFAR10(test_images, transforms=transforms.Compose([transforms.ToTensor(),
-                                                                                  transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
 
+target_data = CustomDataset(target_images, transforms=transforms.Compose([transforms.ToTensor(),
+                                                                              transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
 
 #  defining encoder
 class Encoder(nn.Module):
@@ -136,21 +140,21 @@ class Autoencoder(nn.Module):
     return decoded
   
 class ConvolutionalAutoencoder():
-  def __init__(self, autoencoder):
+  def __init__(self, autoencoder, checkpoint_path='ckpt.pt'):
     self.network = autoencoder
+    self.checkpoint_path = checkpoint_path
     self.optimizer = torch.optim.Adam(self.network.parameters(), lr=1e-3)
+  
+  def load_weights(self):
+    checkpoint = torch.load(self.checkpoint_path, map_location=self.device)
+    state_dict = checkpoint['model']
+    unwanted_prefix = '_orig_mod.'
+    for k,v in list(state_dict.items()):
+        if k.startswith(unwanted_prefix):
+            state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+    self.model.network.load_state_dict(state_dict)
 
-  def train(self, loss_function, epochs, batch_size, 
-            training_set, validation_set, test_set):
-    
-    #  creating log
-    log_dict = {
-        'training_loss_per_batch': [],
-        'validation_loss_per_batch': [],
-        'visualizations': []
-    } 
-
-    #  defining weight initialization function
+  def train(self, loss_function, epochs, batch_size, training_data, target_data):
     def init_weights(module):
       if isinstance(module, nn.Conv2d):
         torch.nn.init.xavier_uniform_(module.weight)
@@ -158,99 +162,77 @@ class ConvolutionalAutoencoder():
       elif isinstance(module, nn.Linear):
         torch.nn.init.xavier_uniform_(module.weight)
         module.bias.data.fill_(0.01)
-
-    #  initializing network weights
     self.network.apply(init_weights)
 
-    #  setting convnet to training mode
     self.network.train()
     self.network.to(device)
 
     for epoch in range(epochs):
       print(f'Epoch {epoch+1}/{epochs}')
-      train_losses = []
-
-      #------------
-      #  TRAINING
-      #------------
-      print('training...')
-      window_size = 4
-      for _ in range(0, 100):
+      for i in range(0, 100):
         train = []
-        answer = []
+        target = []
         for j in range(0, batch_size):
-          i = random.randint(window_size, int(len(training_images)/window_size) - 1)
-          train.append(torch.cat([training_data[i + j] for j in range(window_size)], dim = 1).to(device))
-          answer.append(torch.cat([training_data[i + j + 1] for j in range(window_size)], dim = 1).to(device))
-
-        images = torch.stack(train)
-        target = torch.stack(answer)
+          r = random.randint(0, NUM_TRAIN - 1)
+          train.append(training_data[r])
+          target.append(target_data[r])
+        images = torch.stack(train).to(device)
+        target = torch.stack(target).to(device)
         # #  zeroing gradients
         self.optimizer.zero_grad()
         # #  sending images to device
         # #  reconstructing images
         output = self.network(images)
         # #  computing loss
-        loss = loss_function(output.view(-1,3,128,32), target.view(-1, 3, 128, 32))
+        loss = loss_function(tv.crop(output.view(-1,3,32,128), 0, 96, 32, 32), tv.crop(target.view(-1, 3, 32, 128), 0, 96, 32, 32))
         # #  calculating gradients
         loss.backward()
         # #  optimizing weights
         self.optimizer.step()
 
-        #--------------
-        # LOGGING
-        #--------------
-        log_dict['training_loss_per_batch'].append(loss.item())
-
-      #--------------
-      # VALIDATION
-      #--------------
-      print('validating...')
-      # for i in range(window_size, int(len(val_images)/window_size - 1):
-      #   with torch.no_grad():
-      #     #  sending validation images to device
-      #     val_images = torch.cat([validation_data[i + j] for j in range(window_size)], dim = 1).to(device)
-      #     #  reconstructing images
-      #     output = self.network(val_images)
-      #     #  computing validation loss
-      #     val_loss = loss_function(output, val_images.view(-1, 3, 32, 32))
-
-      #   #--------------
-      #   # LOGGING
-      #   #--------------
-        # log_dict['validation_loss_per_batch'].append(val_loss.item())
-
-
-      #--------------
-      # VISUALISATION
-      #--------------
+      if epoch % 100 == 0:
+        checkpoint = {
+            'model': self.network.state_dict(),
+            'optimizer': self.optimizer.state_dict(),
+        }
+        print(f"saving checkpoint")
+        torch.save(checkpoint, self.checkpoint_path)
       print(f'training_loss: {round(loss.item(), 4)}')
-      if epoch % 1000 == 0:
-        print("Visualizing epoch", epoch)
-        window_size = 4
-        for i in range(window_size, int(len(test_images)/window_size) - 1):
-          test_image = torch.cat([test_data[i + j] for j in range(window_size)], dim = 1)
-          test_image = test_image.to(device)
 
-          with torch.no_grad():
-            #  reconstructing test images
-            reconstructed_img = self.network(test_image)
-          #  sending reconstructed and images to cpu to allow for visualization
-          reconstructed_img = reconstructed_img.view(3, 128, 32).cpu()
-          test_image = test_image.cpu()
+  def test(self):
+    with torch.no_grad():
+      #  reconstructing test images
+#  extracting training images
+      raw_images = [render_polygon(5, WINDOW) for _ in range(0, 5)]
 
-          #  visualisation
-          imgs = torch.stack([test_image, reconstructed_img], dim=0)
-          grid = make_grid(imgs, nrow=10, normalize=True, padding=1)
-          grid = grid.permute(1, 2, 0)
-          plt.figure(dpi=170)
-          plt.title('Original/Reconstructed')
-          plt.imshow(grid)
-          log_dict['visualizations'].append(grid)
-          plt.axis('off')
-          plt.show()
+      training_images = []
+      target_images = []
+      for imgs in raw_images:
+        example = np.concatenate(imgs[:-1], axis=1)
+        answer = np.concatenate(imgs[1:], axis=1)
+        training_images.append(example)
+        target_images.append(answer)
       
-    return log_dict
+      examples = CustomDataset(training_images, transforms=transforms.Compose([transforms.ToTensor(),
+                                                                              transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
+
+      answers = CustomDataset(target_images, transforms=transforms.Compose([transforms.ToTensor(),
+                                                                              transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]))
+
+      reconstructed_img = self.network(examples[0].to(device))
+      #  sending reconstructed and images to cpu to allow for visualization
+      reconstructed_img = reconstructed_img.view(3, 32, 128).cpu()
+      test_image = answers[0].cpu()
+
+      #  visualisation
+      imgs = torch.stack([test_image, reconstructed_img], dim=0)
+      grid = make_grid(imgs, nrow=10, normalize=True, padding=1)
+      grid = grid.permute(1, 2, 0)
+      plt.figure(dpi=170)
+      plt.title('Original/Reconstructed')
+      plt.imshow(grid)
+      plt.axis('off')
+      plt.show()
 
   def autoencode(self, x):
     return self.network(x)
@@ -264,8 +246,10 @@ class ConvolutionalAutoencoder():
     return decoder(x)
   
 #  training model
-model = ConvolutionalAutoencoder(Autoencoder(Encoder(), Decoder()))
 
-log_dict = model.train(nn.MSELoss(), epochs=1000, batch_size=64, 
-                       training_set=training_data, validation_set=validation_data,
-                       test_set=test_data)
+model = ConvolutionalAutoencoder(Autoencoder(Encoder(), Decoder()))
+model.load_weights()
+model.train(nn.MSELoss(), epochs=101, batch_size=64, training_data=training_data, target_data=target_data)
+
+for i in range(0, 10):
+  model.test()

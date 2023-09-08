@@ -11,7 +11,8 @@ BG_COLOR = "black"
 
 
 pyvista.start_xvfb()
-pl = pyvista.Plotter(off_screen=True, window_size=[32,32])
+pl = pyvista.Plotter(off_screen=True, window_size=[256,256], lighting=None)
+pl.enable_lightkit()
 pl.set_background(BG_COLOR)
 
 def render_polygon(N, num_frames):
@@ -27,14 +28,14 @@ def render_polygon(N, num_frames):
     mesh = poly.extrude([0, 0, 1], capping=True)
 
     # pick a random start pos
-    actor = pl.add_mesh(mesh, smooth_shading=False)
+    actor = pl.add_mesh(mesh, smooth_shading=True, show_edges=True, specular=0.5, specular_power=15, split_sharp_edges=True)
     pl.camera.azimuth = random.random()*360
     pl.camera.roll = random.random()*360
     pl.camera.elevation = random.random()*360
-    sz = 5
-    da = 0 #(1 if random.random() > 0.5 else -1) * sz
+    sz = 15
+    da = (1 if random.random() > 0.5 else -1) * sz
     dr =  (1 if random.random() > 0.5 else -1) * sz
-    de =  0 #(1 if random.random() > 0.5 else -1) * sz
+    de =  (1 if random.random() > 0.5 else -1) * sz
     curr_img = np.array(pl.screenshot(return_img=True))
     past_frames = [curr_img]
     for i in range(0, num_frames):
@@ -42,14 +43,7 @@ def render_polygon(N, num_frames):
         pl.camera.azimuth += da
         pl.camera.roll += dr
         pl.camera.elevation += de
-        actor = pl.add_mesh(mesh, smooth_shading=False)
+        actor = pl.add_mesh(mesh, smooth_shading=True,specular=0.5, specular_power=15,  split_sharp_edges=True)
         curr_img = np.array(pl.screenshot(return_img=True))
         past_frames.append(curr_img)
     return past_frames
-
-if __name__ == '__main__':
-    for i in range(0, 100):
-        start = time.time()
-        img, _, _ = render_polygon(5, 1)
-        end = time.time()
-        print(end - start)
