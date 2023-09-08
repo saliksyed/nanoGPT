@@ -162,6 +162,7 @@ class ConvolutionalAutoencoder:
 
         for epoch in range(epochs):
             print(f"Epoch {epoch+1}/{epochs}")
+            print(f"Training on {len(training_data)} samples")
             for i in range(0, len(training_data)):
                 train = []
                 target = []
