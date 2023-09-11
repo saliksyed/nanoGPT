@@ -22,6 +22,49 @@ def createMetaball(origin=(0, 0, 0), n=30, r0=4, r1=2.5):
     return obj
 
 
+def build_scene():
+    # Add cube to scene
+    bpy.ops.mesh.primitive_cube_add()
+    cube = bpy.context.selected_objects[0]
+    cube.location = (0.0, 0.0, 0.0)
+    # createMetaball()
+    # Create a new material
+    material = bpy.data.materials.new(name="Perlin_Noise_Material")
+    material.use_nodes = True
+    nodes = material.node_tree.nodes
+    # # Clear default nodes
+    for node in material.node_tree.nodes:
+        material.node_tree.nodes.remove(node)
+
+    # Add shader nodes
+    shader_output = nodes.new(type="ShaderNodeOutputMaterial")
+    diffuse_shader = nodes.new(type="ShaderNodeBsdfDiffuse")
+    texture_coord = nodes.new(type="ShaderNodeTexCoord")
+    noise_texture = nodes.new(type="ShaderNodeTexNoise")
+    bright_contrast = nodes.new(type="ShaderNodeBrightContrast")
+
+    bright_contrast.inputs["Bright"].default_value = 1.0  # Change as needed
+    bright_contrast.inputs["Contrast"].default_value = 15.0  # Change as needed
+
+    # Update node positions
+    shader_output.location = (0, 0)
+    diffuse_shader.location = (-1, 0)
+    texture_coord.location = (-1, 1)
+    noise_texture.location = (-1, 0)
+
+    # Connect nodes together
+    links = material.node_tree.links
+    link0 = links.new
+    link0(
+        noise_texture.outputs["Color"], bright_contrast.inputs[0]
+    )  # Updated connection
+    link0(bright_contrast.outputs[0], diffuse_shader.inputs["Color"])  # New connection
+    link0(diffuse_shader.outputs["BSDF"], shader_output.inputs["Surface"])
+    link0(texture_coord.outputs["Object"], noise_texture.inputs["Vector"])
+
+    cube.data.materials.append(material)
+
+
 # Set up rendering
 context = bpy.context
 scene = bpy.context.scene
@@ -104,22 +147,11 @@ bpy.ops.object.delete()
 bpy.ops.object.select_all(action="DESELECT")
 
 ################ START SCENE LOGIC #################
-# Add cube to scene
-bpy.ops.mesh.primitive_cube_add()
-cube = bpy.context.selected_objects[0]
-cube.location = (0.0, 0.0, 0.0)
-createMetaball()
-
+build_scene()
 ################ END SCENE LOGIC ###################
 
 obj = bpy.context.selected_objects[0]
 context.view_layer.objects.active = obj
-
-# Possibly disable specular shading
-for slot in obj.material_slots:
-    node = slot.material.node_tree.nodes["Principled BSDF"]
-    node.inputs["Specular"].default_value = 0.05
-
 
 # Make light just directional, disable shadows.
 light = bpy.data.lights["Light"]
@@ -127,7 +159,7 @@ light.type = "SUN"
 light.use_shadow = False
 # Possibly disable specular shading:
 light.specular_factor = 1.0
-light.energy = 10.0
+light.energy = 2.0
 
 # Add another light source so stuff facing away from light is not completely dark
 bpy.ops.object.light_add(type="SUN")
@@ -156,7 +188,7 @@ scene.collection.objects.link(cam_empty)
 context.view_layer.objects.active = cam_empty
 cam_constraint.target = cam_empty
 
-view_count = 10
+view_count = 1
 stepsize = 360.0 / view_count
 rotation_mode = "XYZ"
 
