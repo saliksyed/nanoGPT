@@ -11,11 +11,10 @@ pl.set_background(BG_COLOR)
 
 actor = None
 
+tex = pyvista.examples.download_masonry_texture()
 
-def render_polygon(N):
-    global actor
-    if actor:
-        pl.remove_actor(actor)
+
+def generate_random_polygon(N):
     rng = np.random.default_rng()
     angles = np.linspace(0, 2 * np.pi, N, endpoint=False)
     radii = rng.uniform(0.5, 1.5, N)
@@ -25,11 +24,21 @@ def render_polygon(N):
     face = [N + 1] + list(range(N)) + [0]
     poly = pyvista.PolyData(points_3d, faces=face)
     mesh = poly.extrude([0, 0, 1], capping=True)
-    actor = pl.add_mesh(
-        mesh,
-        smooth_shading=False,
-    )
+    return mesh
+
+
+def render_polygon(N):
+    global actor
+    if actor:
+        pl.remove_actor(actor)
+
+    mesh = pyvista.Cylinder()
+    actor = pl.add_mesh(mesh, texture=tex)
     pl.camera.azimuth = random.random() * 360
     pl.camera.roll = random.random() * 360
     pl.camera.elevation = random.random() * 360
+    sz = 5
+    da = sz  # (1 if random.random() > 0.5 else -1) * sz
+    dr = sz  # (1 if random.random() > 0.5 else -1) * sz
+    de = sz  # (1 if random.random() > 0.5 else -1) * sz
     return np.array(pl.screenshot(return_img=True))

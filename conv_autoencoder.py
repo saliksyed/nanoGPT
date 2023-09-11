@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 import random
 
-from config import device
+from config import device, LATENT_DIMENSION
 
 
 class CustomDataset(Dataset):
@@ -25,7 +25,11 @@ class CustomDataset(Dataset):
 
 class Encoder(nn.Module):
     def __init__(
-        self, in_channels=3, out_channels=16, latent_dim=200, act_fn=nn.ReLU()
+        self,
+        in_channels=3,
+        out_channels=16,
+        latent_dim=LATENT_DIMENSION,
+        act_fn=nn.ReLU(),
     ):
         super().__init__()
 
@@ -59,7 +63,11 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
     def __init__(
-        self, in_channels=3, out_channels=16, latent_dim=200, act_fn=nn.ReLU()
+        self,
+        in_channels=3,
+        out_channels=16,
+        latent_dim=LATENT_DIMENSION,
+        act_fn=nn.ReLU(),
     ):
         super().__init__()
 
@@ -186,13 +194,12 @@ class ConvolutionalAutoencoder:
                 # #  optimizing weights
                 self.optimizer.step()
 
-            if epoch % save_interval == 0:
-                checkpoint = {
-                    "model": self.network.state_dict(),
-                    "optimizer": self.optimizer.state_dict(),
-                }
-                print(f"saving checkpoint")
-                torch.save(checkpoint, self.checkpoint_path)
+            checkpoint = {
+                "model": self.network.state_dict(),
+                "optimizer": self.optimizer.state_dict(),
+            }
+            print(f"saving checkpoint")
+            torch.save(checkpoint, self.checkpoint_path)
             print(f"training_loss: {round(loss.item(), 4)}")
 
     def autoencode(self, x):

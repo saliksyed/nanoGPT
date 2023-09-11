@@ -86,7 +86,7 @@ class Node:
             y = child.node.crop[1]
             w = child.node.crop[2]
             h = child.node.crop[3]
-            base_prediction[:, x : x + w, y : y + h] = child.weight * result
+            # base_prediction[:, x : x + w, y : y + h] = result
         return base_prediction
 
     def add_example(self, example, answer):
@@ -102,7 +102,7 @@ class Node:
         self.inputs = None
         self.outputs = None
 
-    def train(self, epochs=101, save_interval=100):
+    def train(self, epochs=101):
         curr_transforms = [
             transforms.ToTensor(),
             lambda img: transforms.functional.crop(img, *self.crop),
@@ -135,14 +135,10 @@ class Node:
         self.model.train(
             nn.MSELoss(),
             epochs=epochs,
-            save_interval=save_interval,
             batch_size=64,
             training_data=self.inputs,
             target_data=self.outputs,
         )
-
-        if self.id == "se":
-            self.test()
 
     def test(self):
         cropped_inputs = [
@@ -194,30 +190,52 @@ class Node:
         plt.axis("off")
         plt.show()
 
+    def subdivide(self, depth, so_far=1):
+        if depth == 0:
+            return
+        x = self.crop[0]
+        y = self.crop[1]
+        w = self.crop[2]
+        h = self.crop[3]
+        nw = Node(self.id + "-nw-" + str(so_far), (0, 0, w // 2, h // 2))
+        ne = Node(self.id + "-ne-" + str(so_far), (0, h // 2, w // 2, h // 2))
+        sw = Node(self.id + "-sw-" + str(so_far), (w // 2, 0, w // 2, h // 2))
+        se = Node(self.id + "-se-" + str(so_far), (w // 2, h // 2, w // 2, h // 2))
+        self.add_child(nw)
+        self.add_child(ne)
+        self.add_child(sw)
+        self.add_child(se)
+        depth -= 1
+        nw.subdivide(depth, so_far + 1)
+        ne.subdivide(depth, so_far + 1)
+        sw.subdivide(depth, so_far + 1)
+        se.subdivide(depth, so_far + 1)
+
+    def nodes(self):
+        ret = [self]
+        all_descendents = [edge.node.nodes() for edge in self.outgoing_edges]
+        for node_descendents in all_descendents:
+            ret += node_descendents
+        return ret
+
 
 g = Node("root", (0, 0, 256, 256))
-nw = Node("nw", (0, 0, 128, 128))
-ne = Node("ne", (0, 128, 128, 128))
-sw = Node("sw", (128, 0, 128, 128))
-se = Node("se", (128, 128, 128, 128))
-g.add_child(nw)
-g.add_child(ne)
-g.add_child(sw)
-g.add_child(se)
-
-nodes = [g, nw, ne, sw, se]
-
+g.subdivide(1)
+nodes = g.nodes()
 for node in nodes:
     node.load_weights()
 
-for k in range(0, 10):
-    print(f"Round {k}")
-    examples = [render_polygon(N_SIDES) for i in range(0, 1000)]
-    for example in examples:
-        g.add_example(example, example)
-    for node in nodes:
-        node.train(epochs=100)
+# examples = [render_polygon(N_SIDES) for i in range(0, 1000)]
+# for example in examples:
+#     g.add_example(example, example)
+
+# for node in nodes:
+#     node.train(epochs=1)
+
+for node in nodes:
     node.clear_examples()
 
-nw.test()
+examples = [render_polygon(N_SIDES) for i in range(0, 10)]
+for example in examples:
+    g.add_example(example, example)
 g.test()
