@@ -1,16 +1,18 @@
 import os, math
 import bpy
+import bmesh
 import random
-from mathutils import Vector
+import numpy as np
+from mathutils import Vector, Matrix
 
 
-def createMetaball(origin=(0, 0, 0), n=30, r0=4, r1=2.5):
+def createMetaball(origin=(0, 0, 0), n=30, r0=2, r1=2.5):
     metaball = bpy.data.metaballs.new("MetaBall")
     obj = bpy.data.objects.new("MetaBallObject", metaball)
     bpy.context.collection.objects.link(obj)
 
     metaball.resolution = 0.2
-    metaball.render_resolution = 0.05
+    metaball.render_resolution = 3
 
     for i in range(n):
         location = Vector(origin) + Vector(random.uniform(-r0, r0) for i in range(3))
@@ -22,12 +24,61 @@ def createMetaball(origin=(0, 0, 0), n=30, r0=4, r1=2.5):
     return obj
 
 
-def build_scene():
+def build_sphere():
+    # Add sky sphere
+    bpy.ops.object.select_all(action="DESELECT")
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=50, location=(0, 0, 0), segments=250)
+    sphere = bpy.context.selected_objects[0]
+    material = bpy.data.materials.new(name="Sky_Noise_Material")
+    material.use_nodes = True
+    nodes = material.node_tree.nodes
+    # # Clear default nodes
+    for node in material.node_tree.nodes:
+        material.node_tree.nodes.remove(node)
+
+    # Add shader nodes
+    shader_output = nodes.new(type="ShaderNodeOutputMaterial")
+    diffuse_shader = nodes.new(type="ShaderNodeBsdfDiffuse")
+    texture_coord = nodes.new(type="ShaderNodeTexCoord")
+    noise_texture = nodes.new(type="ShaderNodeTexNoise")
+    mapping_node = nodes.new(type="ShaderNodeMapping")  # New node
+    bright_contrast = nodes.new(type="ShaderNodeBrightContrast")
+
+    bright_contrast.inputs["Bright"].default_value = 1.0  # Change as needed
+    bright_contrast.inputs["Contrast"].default_value = 15.0  # Change as needed
+    mapping_node.inputs["Scale"].default_value = (
+        0.2,
+        0.2,
+        0.2,
+    )  # (X, Y, Z) scaling factors
+
+    # Connect nodes together
+    links = material.node_tree.links
+    link0 = links.new
+    link0(
+        texture_coord.outputs["Object"], mapping_node.inputs["Vector"]
+    )  # New connection
+    link0(
+        mapping_node.outputs["Vector"], noise_texture.inputs["Vector"]
+    )  # Updated connection
+
+    link0(
+        noise_texture.outputs["Color"], bright_contrast.inputs[0]
+    )  # Updated connection
+    link0(bright_contrast.outputs[0], diffuse_shader.inputs["Color"])  # New connection
+    link0(diffuse_shader.outputs["BSDF"], shader_output.inputs["Surface"])
+    link0(mapping_node.outputs["Vector"], noise_texture.inputs["Vector"])
+
+    sphere.data.materials.append(material)
+
+
+def build_cube():
     # Add cube to scene
-    bpy.ops.mesh.primitive_cube_add()
-    cube = bpy.context.selected_objects[0]
-    cube.location = (0.0, 0.0, 0.0)
-    # createMetaball()
+    # bpy.ops.mesh.primitive_cube_add()
+    # cube = bpy.context.selected_objects[0]
+    # cube.location = (0.0, 0.0, 0.0)
+
+    cube = createMetaball()
     # Create a new material
     material = bpy.data.materials.new(name="Perlin_Noise_Material")
     material.use_nodes = True
@@ -41,26 +92,33 @@ def build_scene():
     diffuse_shader = nodes.new(type="ShaderNodeBsdfDiffuse")
     texture_coord = nodes.new(type="ShaderNodeTexCoord")
     noise_texture = nodes.new(type="ShaderNodeTexNoise")
+    mapping_node = nodes.new(type="ShaderNodeMapping")  # New node
     bright_contrast = nodes.new(type="ShaderNodeBrightContrast")
 
     bright_contrast.inputs["Bright"].default_value = 1.0  # Change as needed
     bright_contrast.inputs["Contrast"].default_value = 15.0  # Change as needed
-
-    # Update node positions
-    shader_output.location = (0, 0)
-    diffuse_shader.location = (-1, 0)
-    texture_coord.location = (-1, 1)
-    noise_texture.location = (-1, 0)
+    mapping_node.inputs["Scale"].default_value = (
+        1.0,
+        1.0,
+        1.0,
+    )  # (X, Y, Z) scaling factors
 
     # Connect nodes together
     links = material.node_tree.links
     link0 = links.new
     link0(
+        texture_coord.outputs["Object"], mapping_node.inputs["Vector"]
+    )  # New connection
+    link0(
+        mapping_node.outputs["Vector"], noise_texture.inputs["Vector"]
+    )  # Updated connection
+
+    link0(
         noise_texture.outputs["Color"], bright_contrast.inputs[0]
     )  # Updated connection
     link0(bright_contrast.outputs[0], diffuse_shader.inputs["Color"])  # New connection
     link0(diffuse_shader.outputs["BSDF"], shader_output.inputs["Surface"])
-    link0(texture_coord.outputs["Object"], noise_texture.inputs["Vector"])
+    link0(mapping_node.outputs["Vector"], noise_texture.inputs["Vector"])
 
     cube.data.materials.append(material)
 
@@ -86,6 +144,9 @@ links = bpy.context.scene.node_tree.links
 
 bpy.context.scene.view_layers["ViewLayer"].use_pass_z = True
 bpy.context.scene.view_layers["ViewLayer"].use_pass_normal = True
+bpy.context.scene.view_layers["ViewLayer"].use_pass_diffuse_direct = True
+bpy.context.scene.view_layers["ViewLayer"].use_pass_diffuse_indirect = True
+bpy.context.scene.view_layers["ViewLayer"].use_pass_diffuse_color = True
 
 # Clear default nodes
 for n in nodes:
@@ -125,18 +186,18 @@ normal_file_output.format.file_format = "PNG"
 links.new(bias_node.outputs[0], normal_file_output.inputs[0])
 
 # # Create albedo output nodes
-# alpha_albedo = nodes.new(type="CompositorNodeSetAlpha")
-# links.new(render_layers.outputs["DiffCol"], alpha_albedo.inputs["Image"])
-# links.new(render_layers.outputs["Alpha"], alpha_albedo.inputs["Alpha"])
+alpha_albedo = nodes.new(type="CompositorNodeSetAlpha")
+links.new(render_layers.outputs["DiffCol"], alpha_albedo.inputs["Image"])
+links.new(render_layers.outputs["Alpha"], alpha_albedo.inputs["Alpha"])
 
-# albedo_file_output = nodes.new(type="CompositorNodeOutputFile")
-# albedo_file_output.label = "Albedo Output"
-# albedo_file_output.base_path = ""
-# albedo_file_output.file_slots[0].use_node_format = True
-# albedo_file_output.format.file_format = "PNG"
-# albedo_file_output.format.color_mode = "RGB"
-# albedo_file_output.format.color_depth = "8"
-# links.new(alpha_albedo.outputs["Image"], albedo_file_output.inputs[0])
+albedo_file_output = nodes.new(type="CompositorNodeOutputFile")
+albedo_file_output.label = "Albedo Output"
+albedo_file_output.base_path = ""
+albedo_file_output.file_slots[0].use_node_format = True
+albedo_file_output.format.file_format = "PNG"
+albedo_file_output.format.color_mode = "RGB"
+albedo_file_output.format.color_depth = "8"
+links.new(alpha_albedo.outputs["Image"], albedo_file_output.inputs[0])
 
 
 # Delete default cube
@@ -147,7 +208,8 @@ bpy.ops.object.delete()
 bpy.ops.object.select_all(action="DESELECT")
 
 ################ START SCENE LOGIC #################
-build_scene()
+build_sphere()
+build_cube()
 ################ END SCENE LOGIC ###################
 
 obj = bpy.context.selected_objects[0]
@@ -175,6 +237,7 @@ cam = scene.objects["Camera"]
 cam.location = (0, 10, 5)
 cam.data.lens = 35
 cam.data.sensor_width = 32
+cam.data.clip_end = 10000.0
 
 cam_constraint = cam.constraints.new(type="TRACK_TO")
 cam_constraint.track_axis = "TRACK_NEGATIVE_Z"
@@ -188,24 +251,25 @@ scene.collection.objects.link(cam_empty)
 context.view_layer.objects.active = cam_empty
 cam_constraint.target = cam_empty
 
-view_count = 1
+view_count = 10
 stepsize = 360.0 / view_count
 rotation_mode = "XYZ"
 
 model_identifier = "cube"
-fp = os.path.join("../data", model_identifier)
+fp = os.path.join("../data", "example")
 
 for i in range(0, view_count):
     print("Rotation {}, {}".format((stepsize * i), math.radians(stepsize * i)))
 
-    render_file_path = fp + "_r_{0:03d}".format(int(i * stepsize))
+    render_file_path = fp + "_" + str(i)
 
     scene.render.filepath = render_file_path
     depth_file_output.file_slots[0].path = render_file_path + "_depth"
     normal_file_output.file_slots[0].path = render_file_path + "_normal"
-    # albedo_file_output.file_slots[0].path = render_file_path + "_albedo"
+    albedo_file_output.file_slots[0].path = render_file_path + "_albedo"
 
-    bpy.ops.render.render(write_still=True)  # render still
+    bpy.ops.render.render(write_still=True)
     pixels = bpy.data.images["Viewer Node"]
-    print(pixels)
     cam_empty.rotation_euler[2] += math.radians(stepsize)
+
+    # Write optical flow
