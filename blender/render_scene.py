@@ -273,22 +273,12 @@ def render_scene_examples(
             (1 if random.random() > 0.5 else -1) * 1.0 / 8.0,
         )
 
-        cam.location[0] += x * 2.0
-        cam.location[1] += y * 2.0
-        cam.location[2] += z * 2.0
-        cam_empty.rotation_euler[0] += x
-        cam_empty.rotation_euler[1] += y
         cam_empty.rotation_euler[2] += z
         depth_file_output.file_slots[0].path = render_file_path + "_depth_delta"
         normal_file_output.file_slots[0].path = render_file_path + "_normal_delta"
         albedo_file_output.file_slots[0].path = render_file_path + "_albedo_delta"
         bpy.ops.render.render(write_still=True)
-        cam_empty.rotation_euler[0] -= x
-        cam_empty.rotation_euler[1] -= y
         cam_empty.rotation_euler[2] -= z
-        cam.location[0] -= x * 2.0
-        cam.location[1] -= y * 2.0
-        cam.location[2] -= z * 2.0
         cam_empty.rotation_euler[2] += math.radians(stepsize)
 
 
