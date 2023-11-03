@@ -317,25 +317,7 @@ def render_scene_examples(
     for i in range(0, view_count):
         render_file_path = fp + "_" + str(i + start_example)
         scene.render.filepath = render_file_path
-        # depth_file_output.file_slots[0].path = render_file_path + "_depth"
-        # normal_file_output.file_slots[0].path = render_file_path + "_normal"
-        # albedo_file_output.file_slots[0].path = render_file_path + "_albedo"
         bpy.ops.render.render(write_still=True)
-
-        # scene.render.filepath = render_file_path + "_delta"
-
-        # x, y, z = (
-        #     (1 if random.random() > 0.5 else -1) * 1.0 / 8.0,
-        #     (1 if random.random() > 0.5 else -1) * 1.0 / 8.0,
-        #     (1 if random.random() > 0.5 else -1) * 1.0 / 8.0,
-        # )
-
-        # cam_empty.rotation_euler[2] += z
-        # depth_file_output.file_slots[0].path = render_file_path + "_depth_delta"
-        # normal_file_output.file_slots[0].path = render_file_path + "_normal_delta"
-        # albedo_file_output.file_slots[0].path = render_file_path + "_albedo_delta"
-        # bpy.ops.render.render(write_still=True)
-        # cam_empty.rotation_euler[2] -= z
         cam_empty.rotation_euler[2] += math.radians(stepsize)
 
 
@@ -346,10 +328,9 @@ for i in range(0, 1):
     r1 = 2.5
     render_resolution = 0.1
     seed = random.randint(0, 10000000)
-    views = 1
-    for noise_scale in [0.0, 0.01, 0.05, 0.1, 0.2]:
-        bpy.ops.wm.read_factory_settings()
-        render_scene_examples(
-            example, views, n, r0, r1, render_resolution, noise_scale, seed
-        )
-        example += views
+    views = 10
+    bpy.ops.wm.read_factory_settings()
+    render_scene_examples(
+        example, views, n, r0, r1, render_resolution, noise_scale, seed
+    )
+    example += views

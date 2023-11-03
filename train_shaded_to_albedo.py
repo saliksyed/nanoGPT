@@ -328,7 +328,7 @@ loss_fn = nn.MSELoss()
 optimizer = torch.optim.Adam(network.parameters(), lr=1.5e-4)
 
 
-checkpoint_path = "weights/albedo_to_normal.pt"
+checkpoint_path = "weights/shaded_to_albedo.pt"
 
 #### Load model
 checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -348,13 +348,13 @@ network.load_state_dict(state_dict)
 #     # Render all the blender images
 #     render_polygon()
 
+#     shaded_images = []
 #     albedo_images = []
-#     normal_images = []
 #     for i in range(0, 1000):
-#         albedo = f"data/example_{i}_albedo0001.png"
-#         target = f"data/example_{i}_normal0001.png"
-#         albedo_images.append(skimage.io.imread(albedo))
-#         normal_images.append(skimage.io.imread(target))
+#         shaded = f"data/example_{i}.png"
+#         target = f"data/example_{i}_albedo0001.png"
+#         shaded_images.append(skimage.io.imread(shaded))
+#         albedo_images.append(skimage.io.imread(target))
 
 #     curr_transforms = [
 #         transforms.ToTensor(),
@@ -362,11 +362,11 @@ network.load_state_dict(state_dict)
 #     ]
 
 #     inputs = CustomDataset(
-#         albedo_images,
+#         shaded_images,
 #         transforms=transforms.Compose(curr_transforms),
 #     )
 #     outputs = CustomDataset(
-#         normal_images,
+#         albedo_images,
 #         transforms=transforms.Compose(
 #             [
 #                 transforms.ToTensor(),
@@ -400,13 +400,12 @@ network.load_state_dict(state_dict)
 #     torch.save(checkpoint, checkpoint_path)
 
 # ### Test
+shaded_images = []
 albedo_images = []
-normal_images = []
-for i in range(0, 1):
-    albedo = f"data/example_{i}_albedo0001.png"
-    target = f"data/example_{i}_normal0001.png"
-    albedo_images.append(skimage.io.imread(albedo)[:, :, :3])
-    normal_images.append(skimage.io.imread(target))
+albedo = f"data/example_0_delta.png"
+target = f"data/example_0_albedo0001.png"
+shaded_images.append(skimage.io.imread(albedo))
+albedo_images.append(skimage.io.imread(target))
 
 curr_transforms = [
     transforms.ToTensor(),
@@ -414,11 +413,11 @@ curr_transforms = [
 ]
 
 test_inputs = CustomDataset(
-    albedo_images,
+    shaded_images,
     transforms=transforms.Compose(curr_transforms),
 )
 test_outputs = CustomDataset(
-    normal_images,
+    albedo_images,
     transforms=transforms.Compose(
         [
             transforms.ToTensor(),
@@ -436,8 +435,14 @@ estimate = F.fold(
 )
 
 import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image
 
 viz = estimate.detach().to("cpu").permute(0, 2, 3, 1).numpy().reshape(128, 128, 3)
+norm = plt.Normalize(vmin=viz.min(), vmax=viz.max())
+
+plt.imsave("test.png", norm(viz))
+
 f, ax = plt.subplots(1, 2)
 ax[0].imshow(viz)
 ax[1].imshow(test_outputs[idx].permute(1, 2, 0))

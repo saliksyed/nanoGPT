@@ -369,77 +369,78 @@ network.load_state_dict(state_dict)
 
 
 # # # ### Train
-for epoch in range(epochs):
-    print(f"Epoch {epoch+1}/{epochs}")
+# for epoch in range(epochs):
+#     print(f"Epoch {epoch+1}/{epochs}")
 
-    # Render all the blender images
-    print("Rendering dataset")
-    render_polygon()
-    print("Done rendering dataset")
+#     # Render all the blender images
+#     print("Rendering dataset")
+#     if epoch > 0:
+#         render_polygon()
+#     print("Done rendering dataset")
 
-    albedo_images = []
-    normal_images = []
-    flow_images = []
-    print("Building dataset")
-    for i in range(0, 1000):
-        # compute optical flow
-        end = skimage.color.rgb2gray(skimage.io.imread(f"./data/example_{i}.png"))
-        start = skimage.color.rgb2gray(
-            skimage.io.imread(f"./data/example_{i}_delta.png")
-        )
-        flow = skimage.registration.optical_flow_ilk(start, end)
-        flow_color = flow_vis.flow_to_color(np.transpose(flow), convert_to_bgr=False)
-        skimage.io.imsave(f"./data/example_{i}_flow.png", flow_color)
+#     albedo_images = []
+#     normal_images = []
+#     flow_images = []
+#     print("Building dataset")
+#     for i in range(0, 1000):
+#         # compute optical flow
+#         end = skimage.color.rgb2gray(skimage.io.imread(f"./data/example_{i}.png"))
+#         start = skimage.color.rgb2gray(
+#             skimage.io.imread(f"./data/example_{i}_delta.png")
+#         )
+#         flow = skimage.registration.optical_flow_ilk(start, end)
+#         flow_color = flow_vis.flow_to_color(np.transpose(flow), convert_to_bgr=False)
+#         skimage.io.imsave(f"./data/example_{i}_flow.png", flow_color)
 
-        albedo = f"data/example_{i}_albedo0001.png"
-        flow = f"data/example_{i}_flow.png"
-        target = f"data/example_{i}_normal0001.png"
-        albedo_images.append(skimage.io.imread(albedo))
-        normal_images.append(skimage.io.imread(target))
-        flow_images.append(skimage.io.imread(flow))
-    print("Done building dataset")
+#         albedo = f"data/example_{i}_albedo0001.png"
+#         flow = f"data/example_{i}_flow.png"
+#         target = f"data/example_{i}_normal0001.png"
+#         albedo_images.append(skimage.io.imread(albedo))
+#         normal_images.append(skimage.io.imread(target))
+#         flow_images.append(skimage.io.imread(flow))
+#     print("Done building dataset")
 
-    curr_transforms = [
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    ]
+#     curr_transforms = [
+#         transforms.ToTensor(),
+#         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+#     ]
 
-    inputs = CustomDataset(
-        albedo_images,
-        transforms=transforms.Compose(curr_transforms),
-    )
-    flow_inputs = CustomDataset(
-        flow_images,
-        transforms=transforms.Compose(curr_transforms),
-    )
-    outputs = CustomDataset(
-        normal_images,
-        transforms=transforms.Compose(curr_transforms),
-    )
+#     inputs = CustomDataset(
+#         albedo_images,
+#         transforms=transforms.Compose(curr_transforms),
+#     )
+#     flow_inputs = CustomDataset(
+#         flow_images,
+#         transforms=transforms.Compose(curr_transforms),
+#     )
+#     outputs = CustomDataset(
+#         normal_images,
+#         transforms=transforms.Compose(curr_transforms),
+#     )
 
-    for i in range(0, 1000):
-        train = []
-        target = []
-        for j in range(0, batch_size):
-            r = random.randint(0, len(inputs) - 1)
-            train.append(torch.stack([inputs[r], flow_inputs[r]], dim=-1))
-            target.append(outputs[r])
-        images = torch.stack(train).to(device)
-        target = torch.stack(target).to(device)
-        # #  zeroing gradients
-        optimizer.zero_grad()
-        output, loss = network(images, target)
-        if i % 10 == 0:
-            print(loss)
-        loss.backward()
-        optimizer.step()
+#     for i in range(0, 1000):
+#         train = []
+#         target = []
+#         for j in range(0, batch_size):
+#             r = random.randint(0, len(inputs) - 1)
+#             train.append(torch.stack([inputs[r], flow_inputs[r]], dim=-1))
+#             target.append(outputs[r])
+#         images = torch.stack(train).to(device)
+#         target = torch.stack(target).to(device)
+#         # #  zeroing gradients
+#         optimizer.zero_grad()
+#         output, loss = network(images, target)
+#         if i % 10 == 0:
+#             print(loss)
+#         loss.backward()
+#         optimizer.step()
 
-    checkpoint = {
-        "model": network.state_dict(),
-        "optimizer": optimizer.state_dict(),
-    }
-    print(f"saving checkpoint")
-    torch.save(checkpoint, checkpoint_path)
+#     checkpoint = {
+#         "model": network.state_dict(),
+#         "optimizer": optimizer.state_dict(),
+#     }
+#     print(f"saving checkpoint")
+#     torch.save(checkpoint, checkpoint_path)
 
 # # ### Test
 
@@ -448,14 +449,7 @@ albedo_images = []
 normal_images = []
 flow_images = []
 print("Building dataset")
-for i in range(1000, 1100):
-    # compute optical flow
-    end = skimage.color.rgb2gray(skimage.io.imread(f"./data/example_{i}.png"))
-    start = skimage.color.rgb2gray(skimage.io.imread(f"./data/example_{i}_delta.png"))
-    flow = skimage.registration.optical_flow_ilk(start, end)
-    flow_color = flow_vis.flow_to_color(np.transpose(flow), convert_to_bgr=False)
-    skimage.io.imsave(f"./data/example_{i}_flow.png", flow_color)
-
+for i in range(0, 100):
     albedo = f"data/example_{i}_albedo0001.png"
     flow = f"data/example_{i}_flow.png"
     target = f"data/example_{i}_normal0001.png"
@@ -482,7 +476,7 @@ outputs = CustomDataset(
     transforms=transforms.Compose(curr_transforms),
 )
 
-idx = 15
+idx = 2
 example = torch.stack([inputs[idx], flow_inputs[idx]], dim=-1)
 test = torch.stack([example]).to(device)
 result = torch.stack([outputs[idx]]).to(device)
